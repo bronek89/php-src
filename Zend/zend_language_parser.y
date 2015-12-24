@@ -247,7 +247,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %type <ast> echo_expr_list unset_variables catch_list parameter_list class_statement_list
 %type <ast> implements_list case_list if_stmt_without_else
 %type <ast> non_empty_parameter_list argument_list non_empty_argument_list property_list
-%type <ast> class_const_list class_const_decl name_list trait_adaptations method_body non_empty_for_exprs
+%type <ast> class_const_list class_const_decl name_list multi_name trait_adaptations method_body non_empty_for_exprs
 %type <ast> ctor_arguments alt_if_stmt_without_else trait_adaptation_list lexical_vars
 %type <ast> lexical_var_list encaps_list array_pair_list non_empty_array_pair_list
 %type <ast> assignment_list isset_variable type return_type
@@ -303,6 +303,11 @@ name:
 		namespace_name								{ $$ = $1; $$->attr = ZEND_NAME_NOT_FQ; }
 	|	T_NAMESPACE T_NS_SEPARATOR namespace_name	{ $$ = $3; $$->attr = ZEND_NAME_RELATIVE; }
 	|	T_NS_SEPARATOR namespace_name				{ $$ = $2; $$->attr = ZEND_NAME_FQ; }
+;
+
+multi_name:
+		name { $$ = zend_ast_create_list(1, ZEND_AST_MULTI_NAME, $1); }
+	|	multi_name '|' name { $$ = zend_ast_list_add($1, $3); }
 ;
 
 top_statement:
@@ -454,7 +459,7 @@ statement:
 catch_list:
 		/* empty */
 			{ $$ = zend_ast_create_list(0, ZEND_AST_CATCH_LIST); }
-	|	catch_list T_CATCH '(' name T_VARIABLE ')' '{' inner_statement_list '}'
+	|	catch_list T_CATCH '(' multi_name T_VARIABLE ')' '{' inner_statement_list '}'
 			{ $$ = zend_ast_list_add($1, zend_ast_create(ZEND_AST_CATCH, $4, $5, $8)); }
 ;
 

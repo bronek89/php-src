@@ -4429,17 +4429,13 @@ void zend_compile_try(zend_ast *ast) /* {{{ */
 
 	for (i = 0; i < catches->children; ++i) {
 		zend_ast *catch_ast = catches->child[i];
-		zend_ast *class_ast = catch_ast->child[0];
+		zend_ast *classes_ast = catch_ast->child[0];
 		zend_ast *var_ast = catch_ast->child[1];
 		zend_ast *stmt_ast = catch_ast->child[2];
 		zval *var_name = zend_ast_get_zval(var_ast);
 		zend_bool is_last_catch = (i + 1 == catches->children);
 
 		uint32_t opnum_catch;
-
-		if (!zend_is_const_default_class_ref(class_ast)) {
-			zend_error_noreturn(E_COMPILE_ERROR, "Bad class name in the catch statement");
-		}
 
 		opnum_catch = get_next_op_number(CG(active_op_array));
 		if (i == 0) {
@@ -4448,15 +4444,43 @@ void zend_compile_try(zend_ast *ast) /* {{{ */
 
 		CG(zend_lineno) = catch_ast->lineno;
 
-		opline = get_next_op(CG(active_op_array));
-		opline->opcode = ZEND_CATCH;
-		opline->op1_type = IS_CONST;
-		opline->op1.constant = zend_add_class_name_literal(CG(active_op_array),
-			zend_resolve_class_name_ast(class_ast));
+		zend_ast_list *classes = zend_ast_get_list(classes_ast);
 
-		opline->op2_type = IS_CV;
-		opline->op2.var = lookup_cv(CG(active_op_array), zend_string_copy(Z_STR_P(var_name)));
-		opline->result.num = is_last_catch;
+		uint32_t j;
+		uint32_t *c_jmp_opnums = safe_emalloc(sizeof(uint32_t), classes->children, 0);
+
+		for (j = 0; j < classes->children; ++j) {
+			zend_bool is_last_class = (j + 1 == classes->children);
+			zend_ast *class_ast = classes->child[j];
+
+			if (!zend_is_const_default_class_ref(class_ast)) {
+				zend_error_noreturn(E_COMPILE_ERROR, "Bad class name in the catch statement");
+			}
+
+			opline = get_next_op(CG(active_op_array));
+
+			opline->opcode = ZEND_CATCH;
+			opline->op1_type = IS_CONST;
+
+			opline->op1.constant = zend_add_class_name_literal(CG(active_op_array),
+				zend_resolve_class_name_ast(class_ast));
+
+			opline->op2_type = IS_CV;
+			opline->op2.var = lookup_cv(CG(active_op_array), zend_string_copy(Z_STR_P(var_name)));
+			opline->result.num = is_last_class && is_last_catch;
+
+			c_jmp_opnums[j] = zend_emit_jump(0);
+
+			if (!is_last_class) {
+				opline->extended_value = get_next_op_number(CG(active_op_array));
+			}
+		}
+
+		for (j = 0; j < classes->children; ++j) {
+			zend_update_jump_target_to_next(c_jmp_opnums[j]);
+		}
+
+		efree(c_jmp_opnums);
 
 		zend_compile_stmt(stmt_ast);
 
@@ -4464,7 +4488,7 @@ void zend_compile_try(zend_ast *ast) /* {{{ */
 			jmp_opnums[i + 1] = zend_emit_jump(0);
 		}
 
-		opline = &CG(active_op_array)->opcodes[opnum_catch];
+		opline = &CG(active_op_array)->opcodes[opnum_catch + (classes->children - 1) * 2];
 		if (!is_last_catch) {
 			opline->extended_value = get_next_op_number(CG(active_op_array));
 		}

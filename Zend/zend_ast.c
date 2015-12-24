@@ -764,6 +764,19 @@ static void zend_ast_export_name_list(smart_str *str, zend_ast_list *list, int i
 	}
 }
 
+static void zend_ast_export_multi_name(smart_str *str, zend_ast_list *list, int indent)
+{
+	uint32_t i = 0;
+
+	while (i < list->children) {
+		if (i != 0) {
+			smart_str_appends(str, "| ");
+		}
+		zend_ast_export_name(str, list->child[i], 0, indent);
+		i++;
+	}
+}
+
 static void zend_ast_export_var_list(smart_str *str, zend_ast_list *list, int indent)
 {
 	uint32_t i = 0;
@@ -1118,6 +1131,9 @@ simple_list:
 			goto simple_list;
 		case ZEND_AST_NAME_LIST:
 			zend_ast_export_name_list(str, (zend_ast_list*)ast, indent);
+			break;
+		case ZEND_AST_MULTI_NAME:
+			zend_ast_export_multi_name(str, (zend_ast_list*)ast, indent);
 			break;
 		case ZEND_AST_USE:
 			smart_str_appends(str, "use ");
